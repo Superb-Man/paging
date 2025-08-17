@@ -658,8 +658,8 @@ void kfree(void *pa){
     //uint64 pa2 = PPN2PA(ppn);
     kfree_helper((void*)((uint64)PPN2PA(ppn)));
   }
-  kfree_helper(pa);
 }
+
 
 /**
  * We need to count the references of PPN for any kalloc and kfree
@@ -707,6 +707,25 @@ kalloc(void)
   }
   return (void*)r;
 }
+
+void *
+kalloc2(void)
+{
+  struct run *r;
+
+  acquire(&kmem.lock);
+  r = kmem.freelist;
+  if(r)
+    kmem.freelist = r->next;
+  release(&kmem.lock);
+
+  if(r){
+    memset((char*)(r + 1), 5, PGSIZE - sizeof(*r));
+    // inc(PA2PPN((uint64)r));
+  }
+  return (void*)r;
+}
+
 
 int freePageCount(){
   int c = 0;
