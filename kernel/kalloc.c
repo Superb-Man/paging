@@ -14,7 +14,7 @@
 #define MAX_LIVE_PAGE 50
 #define PAGE_COUNT 1<<15
 int live_count = 0 ;
-void kfree_helper(void *pa);
+
 // void swapListSize();
 
 struct sleeplock slock;
@@ -49,6 +49,30 @@ struct {
   struct spinlock lock;
   struct run *freelist;
 } livelist_node_mem, swappedlist_node_mem;
+
+
+//for root of the live linked list
+struct {
+  struct liveListNode* list;
+  int liveCount ;
+} live;
+
+//for root of the swapped linked list
+struct {
+  struct swappedListNode* list ;
+  int swappedCount ;
+} swapped;
+
+// function prototype
+void kfree_helper(void *pa);
+struct liveListNode *allocate_livelist_node(void);
+struct swappedListNode *allocate_swappedlist_node(void);
+void swap_out(struct liveListNode* n);
+void addSwapped(pte_t *pte, int oldprocess_id, int newprocess_id, int vpn);
+void swap_in(int vpn, int process_id, uint64 *pte);
+void removeLive(int vpn, int process_id, uint64* pte);
+void addLive(pte_t *pte, int process_id, int vpn, int h);
+void removeFromSwapped(int process_id, int vpn, pte_t* pte);
 
 //simple allocation prinpiple in linkedList (using freelist)
 struct liveListNode *
@@ -107,17 +131,7 @@ allocate_swappedlist_node(void)
 
   return (struct swappedListNode*) r ;
 }
-//for root of the live linked list
-struct {
-  struct liveListNode* list;
-  int liveCount ;
-} live;
 
-//for root of the swapped linked list
-struct {
-  struct swappedListNode* list ;
-  int swappedCount ;
-} swapped;
 
 void swap_out(struct liveListNode* n){
   //printf("comming to swap-out\n") ;
@@ -632,8 +646,9 @@ void kfree(void *pa){
   acquire(&refCount.lock);
   int c = refCount.count[ppn];
   release(&refCount.lock);
-  if(c <= 0){
-    panic("kfree__");
+  if(c < 0){
+    return;
+    // panic("kfree__");
   }
   acquire(&refCount.lock);
   refCount.count[ppn]--;
@@ -643,8 +658,8 @@ void kfree(void *pa){
     //uint64 pa2 = PPN2PA(ppn);
     kfree_helper((void*)((uint64)PPN2PA(ppn)));
   }
+  kfree_helper(pa);
 }
-
 
 /**
  * We need to count the references of PPN for any kalloc and kfree
@@ -687,7 +702,7 @@ kalloc(void)
   release(&kmem.lock);
 
   if(r){
-    memset((char*)r, 5, PGSIZE); // fill with junk
+    memset((char*)(r + 1), 5, PGSIZE - sizeof(*r));
     inc(PA2PPN((uint64)r));
   }
   return (void*)r;
