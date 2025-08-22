@@ -65,7 +65,7 @@ int main(int argc, char** argv){
         printf("--------------- basic test --------------\n");
         swapTestBasic();
         printf("--------------- Fork test --------------\n");
-        // swapTestFork();
+        swapTestFork();
 
         pagestats(0) ;
 
