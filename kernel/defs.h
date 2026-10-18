@@ -106,6 +106,14 @@ pagetable_t     proc_pagetable(struct proc *);
 void            proc_freepagetable(pagetable_t, uint64, int);
 int             kill(int);
 int             killed(struct proc*);
+void            killmemgroup(int);
+int             create_thread(void (*fcn)(void*) , void* arg , void* stack) ;
+int             join_thread(int id) ;
+void            exit_thread() ;
+void            new_sleep(uint64) ;
+void            new_wakeup(int) ;
+int             settickets(int);
+int             getpinfo(uint64);
 void            setkilled(struct proc*);
 struct cpu*     mycpu(void);
 struct cpu*     getmycpu(void);
@@ -167,7 +175,10 @@ void            argaddr(int, uint64 *);
 int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
 void            syscall();
-
+int             uvmmirror(pagetable_t, pagetable_t, uint64, uint64, int);
+void            freewalk(pagetable_t) ;
+uint64          uvmallocmirror(pagetable_t, pagetable_t, uint64, uint64, int);
+uint64          uvmdeallocmirror(pagetable_t, uint64, uint64, int);
 // trap.c
 extern uint     ticks;
 void            trapinit(void);
@@ -193,6 +204,7 @@ uint64          uvmalloc(pagetable_t, uint64, uint64, int, int);
 uint64          uvmdealloc(pagetable_t, uint64, uint64, int);
 int             uvmcopy(pagetable_t, pagetable_t, uint64, int, int,struct spinlock*);
 void            uvmfree(pagetable_t, uint64, int);
+void            freewalk(pagetable_t);
 void            uvmunmap(pagetable_t, uint64, uint64, int, int);
 void            uvmclear(pagetable_t, uint64);
 pte_t *         walk(pagetable_t, uint64, int,int);
@@ -217,3 +229,6 @@ void            virtio_disk_intr(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+// rand.c
+long genrand(int); // offline 3

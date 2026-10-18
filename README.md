@@ -2,6 +2,16 @@ xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
 Version 6 (v6).  xv6 loosely follows the structure and style of v6,
 but is implemented for a modern RISC-V multiprocessor using ANSI C.
 
+# Extended xv6
+
+Merged the kernel thread repository and the operating system scheduler repository.
+
+- [Kernel Thread](https://github.com/Superb-Man/Kernel-Thread)
+- [Operating System Scheduler](https://github.com/Superb-Man/Operating-System-Lab/tree/master/offline-3)
+
+# Paging
+
+
 # Allocate Live List Node and SwapList Node
 ```C
 struct liveListNode *

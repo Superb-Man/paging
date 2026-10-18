@@ -123,8 +123,8 @@ walkaddr(pagetable_t pagetable, uint64 va, int process_id)
   if(pte == 0)
     return 0;
 
+  acquireSlock();
   if((*pte & PTE_V) == 0){
-    acquireSlock();
     if(*pte & PTE_SWAPPED){
       swap_in(VA2VPN(va), process_id, pte);
     }
@@ -132,8 +132,8 @@ walkaddr(pagetable_t pagetable, uint64 va, int process_id)
       releaseSlock();
       return 0;
     }
-    releaseSlock();
   }
+  releaseSlock();
   if((*pte & PTE_U) == 0)
     return 0;
   pa = PTE2PA(*pte);
@@ -379,7 +379,7 @@ uvmfree(pagetable_t pagetable, uint64 sz, int process_id)
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz,int oldprocess_id, int newprocess_id, struct spinlock* lk)
 {
-  pte_t *pte;
+  pte_t *pte, *newpte;
   uint64 pa, i;
   uint64 flags;
   // printf("uvm copy entry");
@@ -387,6 +387,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz,int oldprocess_id, int newpr
     if((pte = walk(old, i, 0,0)) == 0)
       panic("uvmcopy: pte should exist");
 
+    // The child gets a private physical page. Keep the source resident
+    // through the copy and register the child's mapping before unlock.
+    acquireSlock();
     if((*pte & PTE_V) == 0){
       if(*pte & PTE_SWAPPED){
         swap_in(VA2VPN(i),oldprocess_id, pte);
@@ -397,17 +400,22 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz,int oldprocess_id, int newpr
 
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    *pte = PA2PTE(pa) | flags;
     char *mem ;
     mem = kalloc() ;
-    if(mem == 0) goto err ;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags,oldprocess_id, newprocess_id) != 0){
-      kfree(mem);
+    if(mem == 0){
+      releaseSlock();
       goto err;
     }
-    if(!(flags & PTE_SWAPPED))
-      inc((uint64) PTE2PPN(*pte));
+    memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, (uint64)mem, flags, 0, newprocess_id) != 0){
+      kfree(mem);
+      releaseSlock();
+      goto err;
+    }
+    newpte = walk(new, i, 0, 0);
+    if((flags & PTE_X) == 0)
+      addLive(newpte, newprocess_id, VA2VPN(i), 0);
+    releaseSlock();
   }
   return 0;
 
@@ -415,6 +423,104 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz,int oldprocess_id, int newpr
   uvmunmap(new, 0, i / PGSIZE, 1, newprocess_id);
   return -1;
 }
+
+int
+uvmmirror(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz, int process_id)
+{
+  pte_t *pte, *newpte;
+  uint64 pa;
+  uint64 i;
+  uint flags;
+
+  oldsz = PGROUNDUP(oldsz);
+  for(i = oldsz; i < newsz; i += PGSIZE){
+    if((pte = walk(old, i, 0, 0)) == 0)
+      panic("uvmmirror: pte should exist");
+
+    // Keep the source resident until its new mapping is registered.
+    acquireSlock();
+    if((*pte & PTE_V) == 0){
+      if(*pte & PTE_SWAPPED)
+        swap_in(VA2VPN(i), process_id, pte);
+      else
+        panic("uvmmirror: page not present");
+    }
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    inc(PTE2PPN(*pte));
+    if(mappages(new, i, PGSIZE, pa, flags, 0, process_id) != 0){
+      kfree((void *)pa);
+      releaseSlock();
+      goto err;
+    }
+    newpte = walk(new, i, 0, 0);
+    if((flags & PTE_X) == 0)
+      addLive(newpte, process_id, VA2VPN(i), 0);
+    releaseSlock();
+  }
+  return (int)newsz;
+
+err:
+  if(i > oldsz)
+    uvmunmap(new, oldsz, (i - oldsz) / PGSIZE, 1, process_id);
+  return -1;
+}
+
+uint64
+uvmallocmirror(pagetable_t parentptable, pagetable_t threadptable,
+               uint64 oldsz, uint64 newsz, int process_id)
+{
+  pte_t *pte, *newpte;
+  uint64 pa;
+  uint64 i;
+  uint flags;
+
+  if(newsz < oldsz)
+    return oldsz;
+
+  for(i = PGROUNDUP(oldsz); i < newsz; i += PGSIZE){
+    if((pte = walk(parentptable, i, 0, 0)) == 0)
+      panic("uvmallocmirror: pte should exist");
+
+    acquireSlock();
+    if((*pte & PTE_V) == 0){
+      if(*pte & PTE_SWAPPED)
+        swap_in(VA2VPN(i), process_id, pte);
+      else
+        panic("uvmallocmirror: page not present");
+    }
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    inc(PTE2PPN(*pte));
+    if(mappages(threadptable, i, PGSIZE, pa, flags, 0, process_id) != 0){
+      kfree((void *)pa);
+      releaseSlock();
+      uvmdeallocmirror(threadptable, i, oldsz, process_id);
+      return 0;
+    }
+    newpte = walk(threadptable, i, 0, 0);
+    if((flags & PTE_X) == 0)
+      addLive(newpte, process_id, VA2VPN(i), 0);
+    releaseSlock();
+  }
+  return newsz;
+}
+
+uint64
+uvmdeallocmirror(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int process_id)
+{
+  if(newsz >= oldsz)
+    return oldsz;
+
+  if(PGROUNDUP(newsz) < PGROUNDUP(oldsz)){
+    uint64 npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
+    uvmunmap(pagetable, PGROUNDUP(newsz), npages, 1, process_id);
+  }
+
+  return newsz;
+}
+
+
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
@@ -528,17 +634,16 @@ int trapHandler(pagetable_t p, int process_id){
   uint64 va = r_stval();
   if(va >= MAXVA) return 0;
   pte_t *pte = walk(p,va,0,0);
-  if(pte == 0){
-    printf("pte 0");
+  if(pte == 0 || (*pte & PTE_SWAPPED) == 0)
     return 0;
-  }
   acquireSlock();
   int vpn = VA2VPN(va);
-  if(*pte & PTE_V){
+  if(*pte & PTE_SWAPPED)
+    swap_in(vpn, process_id, pte);
+  else if((*pte & PTE_V) == 0){
     releaseSlock();
-    return 1;
+    return 0;
   }
-  swap_in(vpn, process_id, pte);
   releaseSlock();
   return 1;
 }

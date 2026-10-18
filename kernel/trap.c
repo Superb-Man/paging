@@ -70,9 +70,11 @@ usertrap(void)
   } else {
     int handled = 0;
     if(r_scause() == 0x0f || r_scause() == 0x0c || r_scause() == 0x0d){
-      handled =  trapHandler(p->pagetable, p->pid);
+      handled = trapHandler(p->pagetable, p->mem_id);
       if(!handled){
-        setkilled(p);
+        printf("usertrap(): invalid memory access pid=%d sepc=%p stval=%p\n",
+               p->pid, r_sepc(), r_stval());
+        killmemgroup(p->mem_id);
       }
 
     }

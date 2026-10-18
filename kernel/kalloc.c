@@ -122,6 +122,22 @@ struct {
   int swappedCount ;
 } swapped;
 
+// Swapping a page used by several threads needs a TLB shootdown on every
+// hart. Until that exists, keep multiply mapped pages resident.
+static struct liveListNode*
+eviction_candidate(void)
+{
+  for(struct liveListNode *n = live.tail; n; n = n->prev){
+    int ppn = PTE2PPN(*n->pte);
+    acquire(&refCount.lock);
+    int refs = refCount.count[ppn];
+    release(&refCount.lock);
+    if(refs == 1)
+      return n;
+  }
+  return 0;
+}
+
 // ============LRU helpers function====================
 
 static inline void 
@@ -231,7 +247,7 @@ void swap_out(struct liveListNode* n){
   uint64 pa = PTE2PA(*n->pte) ;
   int rppn = PTE2PPN(*n->pte) ;
   swapout(s,(char*)pa);
-  printf("<==============Swapped Out (ppn=%d)=================>\n", rppn);
+  // printf("<==============Swapped Out (ppn=%d)=================>\n", rppn);
   int ref_cnt = 0;
   int f = 0;
 
@@ -285,7 +301,7 @@ void swap_out(struct liveListNode* n){
   if(!f)
     panic("swap_out: no matching PTEs for ppn");
     
-  printf("<===============Removed from livePages,number of live pages : %d =====>\n ",live.liveCount) ;
+  // printf("<===============Removed from livePages,number of live pages : %d =====>\n ",live.liveCount) ;
 
   swapCount(s,4,ref_cnt) ;
 
@@ -357,9 +373,10 @@ void swap_in(int vpn, int process_id, uint64 *pte){
   //printf("comming to swap-in\n") ;
   //swapin requires the node to be added in live-pages
   while(live.liveCount >= MAX_LIVE_PAGE){
-    if (!live.tail)
-      panic("swap_in : live tail is null in swap_in");
-    swap_out(live.tail);
+    struct liveListNode *victim = eviction_candidate();
+    if(!victim)
+      break;
+    swap_out(victim);
   }
   if(*pte & PTE_V){
     panic("valid bit set\n");
@@ -384,7 +401,7 @@ void swap_in(int vpn, int process_id, uint64 *pte){
         panic("sp 0\n");
       }
       swapin(mem,n->next->sp);
-      printf("<==============Swapped In=================>\n") ;
+      // printf("<==============Swapped In=================>\n") ;
       //printf("Swapped in\n") ;
       s = n->next->sp;
       break;
@@ -529,14 +546,15 @@ void addLive(pte_t *pte, int process_id, int vpn, int h){
   }
   push_head_live(nd);
 
-  printf("<=================Added livePages (LRU), number of live pages : %d ========>\n", live.liveCount);
+  // printf("<=================Added livePages (LRU), number of live pages : %d ========>\n", live.liveCount);
 
   // Evict until within capacity
   while(live.liveCount > MAX_LIVE_PAGE){
-    if(!live.tail) 
-      panic("addLive : live list empty while over capacity");
-    printf("<================Over capacity; swapping out LRU (tail) ==================>\n");
-    swap_out(live.tail);
+    struct liveListNode *victim = eviction_candidate();
+    if(!victim)
+      break;
+    // printf("<================Over capacity; swapping out LRU (tail) ==================>\n");
+    swap_out(victim);
   }
   //printf("reaching end of addlive\n") ;
 
@@ -745,7 +763,7 @@ int freePageCount(){
   }
   release(&kmem.lock);
 
-  printf("free page count in freelist is %d\n",c) ;
+  // printf("free page count in freelist is %d\n",c) ;
 
   //return c ;
 
@@ -755,7 +773,7 @@ int freePageCount(){
     if(refCount.count[i] == 0) ++c;
     release(&refCount.lock);
   }
-  printf("free page count in ref-count is %d\n",c) ;
+  // printf("free page count in ref-count is %d\n",c) ;
 
   return 1 ;
 }

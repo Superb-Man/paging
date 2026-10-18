@@ -20,4 +20,13 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
-#define SYS_pagestats 22
+#define SYS_create_thread  22
+#define SYS_exit_thread    23
+#define SYS_join_thread    24
+#define SYS_yield 25
+#define SYS_release_sleep 26
+#define SYS_wakeup 27
+
+#define SYS_settickets  28
+#define SYS_getpinfo    29
+#define SYS_pagestats  30

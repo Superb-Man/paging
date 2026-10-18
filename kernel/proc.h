@@ -104,4 +104,13 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  struct sleeplock* memlock ;
+  int mem_id ;
+  int is_thread ;
+
+  int tickets_original ;        // Original number of tickets
+  int tickets_cur ;             // Current number of tickets
+  int inQ ;                     // Current number of queue
+  int time_slices ;
+  int cur_slices ;
 };

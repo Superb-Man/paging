@@ -5,7 +5,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-
+#include "pstat.h"
 uint64
 sys_exit(void)
 {
@@ -90,7 +90,85 @@ sys_uptime(void)
   return xticks;
 }
 
-int sys_pagestats(){
+uint64
+sys_create_thread(void) {
+  uint64 fcn ;
+  uint64 arg ;
+  uint64 stack ;
+  argaddr(0, &fcn) ; 
+  argaddr(1 , &arg) ;
+  argaddr(2, &stack) ;
+
+  return create_thread((void*) fcn, (void*) arg, (void*) stack) ;
+}
+
+uint64
+sys_exit_thread(void) {
+  exit_thread() ;
+  return 0 ;
+}
+
+uint64
+sys_join_thread(void) {
+  int id ;
+  argint(0,&id) ;
+  return join_thread(id) ;
+}
+
+uint64
+sys_yield(void) {
+  int x ;
+  argint(0,&x) ;
+  yield() ;
+  return 0 ;
+}
+
+uint64
+sys_release_sleep(void) {
+  uint64 addr ;
+  argaddr(0, &addr) ;
+  new_sleep(addr) ;
+
+  return 0 ;
+}
+
+uint64
+sys_wakeup(void) {
+  int id ;
+  argint(0, &id) ;
+  new_wakeup(id) ;
+  return 0 ;
+}
+
+
+// sets the ticket count
+uint64
+sys_settickets(void)
+{
+  int ticketCount;
+  argint(0,&ticketCount);
+  if( ticketCount < 0)
+    return -1;
+  else if( ticketCount == 0 ){
+    return settickets(1);
+  }
+  else{
+    return settickets(ticketCount);
+  }
+
+  return 0;
+}
+// gets the ticket count
+uint64
+sys_getpinfo(void)
+{
+  uint64 addr;
+  argaddr(0, &addr);
+  return getpinfo(addr);
+
+}
+
+uint64 sys_pagestats(void){
   int a;
   // int c = 0;
   argint(0, &a);

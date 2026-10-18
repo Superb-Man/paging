@@ -20,9 +20,25 @@ typedef union header Header;
 
 static Header base;
 static Header *freep;
+static volatile uint malloc_lock;
 
-void
-free(void *ap)
+static void
+lockmalloc(void)
+{
+  while(__sync_lock_test_and_set(&malloc_lock, 1) != 0)
+    ;
+  __sync_synchronize();
+}
+
+static void
+unlockmalloc(void)
+{
+  __sync_synchronize();
+  __sync_lock_release(&malloc_lock);
+}
+
+static void
+free_locked(void *ap)
 {
   Header *bp, *p;
 
@@ -43,6 +59,14 @@ free(void *ap)
   freep = p;
 }
 
+void
+free(void *ap)
+{
+  lockmalloc();
+  free_locked(ap);
+  unlockmalloc();
+}
+
 static Header*
 morecore(uint nu)
 {
@@ -56,7 +80,7 @@ morecore(uint nu)
     return 0;
   hp = (Header*)p;
   hp->s.size = nu;
-  free((void*)(hp + 1));
+  free_locked((void*)(hp + 1));
   return freep;
 }
 
@@ -67,6 +91,7 @@ malloc(uint nbytes)
   uint nunits;
     // printf("HERE\n");
 
+  lockmalloc();
   nunits = (nbytes + sizeof(Header) - 1)/sizeof(Header) + 1;
   if((prevp = freep) == 0){
     base.s.ptr = freep = prevp = &base;
@@ -84,12 +109,15 @@ malloc(uint nbytes)
         p->s.size = nunits;
       }
       freep = prevp;
+      unlockmalloc();
       return (void*)(p + 1);
     }
     // printf("HERE\n");
 
     if(p == freep)
-      if((p = morecore(nunits)) == 0)
+      if((p = morecore(nunits)) == 0){
+        unlockmalloc();
         return 0;
+      }
   }
 }

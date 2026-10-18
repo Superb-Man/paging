@@ -1,4 +1,5 @@
 struct stat;
+struct pstat; //offline 3
 
 // system calls
 int fork(void);
@@ -22,7 +23,14 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
-
+int settickets(int); // offline 3
+int getpinfo(struct pstat*); //offline 3
+int create_thread(void (*fcn)(void*) , void* arg , void* stack) ;
+int exit_thread(void) ;
+int join_thread(int) ;
+int yield(int) ;
+int release_sleep(uint8*) ;
+int wakeup(int) ;
 // ulib.c
 int stat(const char*, struct stat*);
 char* strcpy(char*, const char*);

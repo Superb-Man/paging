@@ -14,7 +14,7 @@ fetchaddr(uint64 addr, uint64 *ip)
   struct proc *p = myproc();
   if(addr >= p->sz || addr+sizeof(uint64) > p->sz) // both tests needed, in case of overflow
     return -1;
-  if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip), p->pid) != 0)
+  if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip), p->mem_id) != 0)
     return -1;
   return 0;
 }
@@ -25,7 +25,7 @@ int
 fetchstr(uint64 addr, char *buf, int max)
 {
   struct proc *p = myproc();
-  if(copyinstr(p->pagetable, buf, addr, max, p->pid) < 0)
+  if(copyinstr(p->pagetable, buf, addr, max, p->mem_id) < 0)
     return -1;
   return strlen(buf);
 }
@@ -101,6 +101,14 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
+extern uint64 sys_create_thread(void);
+extern uint64 sys_exit_thread(void);
+extern uint64 sys_join_thread(void);
+extern uint64 sys_yield(void) ;
+extern uint64 sys_release_sleep(void) ;
+extern uint64 sys_wakeup(void) ;
+extern uint64 sys_settickets(void); // offline 3:: adding prototype of sys_call: sys_settickets
+extern uint64 sys_getpinfo(void); // offline 3:: adding prototype of sys_call: sys_getpinfo
 extern uint64 sys_pagestats(void);
 
 
@@ -124,8 +132,16 @@ static uint64 (*syscalls[])(void) = {
 [SYS_open]    sys_open,
 [SYS_write]   sys_write,
 [SYS_mknod]   sys_mknod,
+[SYS_create_thread]   sys_create_thread,
+[SYS_exit_thread]   sys_exit_thread,
+[SYS_join_thread]   sys_join_thread,
+[SYS_yield]   sys_yield ,
+[SYS_release_sleep]   sys_release_sleep ,
+[SYS_wakeup]   sys_wakeup ,
 [SYS_unlink]  sys_unlink,
 [SYS_link]    sys_link,
+[SYS_settickets]   sys_settickets, // offline 3:: adding mapping to function sys_sysinfo
+[SYS_getpinfo]   sys_getpinfo, // offline 3:: adding mapping to function sys_sysinfo
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
 [SYS_pagestats]   sys_pagestats,
